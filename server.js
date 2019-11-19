@@ -1,41 +1,162 @@
-// Dependencies
-const express = require("express");
-const bodyParser = require("body-parser"); //JSON responses
-const mongoose = require("mongoose"); //Mongo object modelling 
-const request = require("request"); //Makes http calls
-const cheerio = require("cheerio"); //Scraper
+// Require npm dependencies
+var express = require("express");
+var mongoose = require("mongoose");
+var axios = require("axios");
+var cheerio = require("cheerio");
+var exphbs = require("express-handlebars");
 
 // Require all models
-const db = require("./models");
+var db = require("./models");
 
-// Port configuration for local/Heroku
-const PORT = process.env.PORT || 3000;
+var PORT = process.env.PORT || 3000;
 
-// Initialize Express
-const app = express();
+// Initialize express
+var app = express();
 
-// Use body-parser for handling form submissions
-app.use(bodyParser.urlencoded({ extended: true }));
+// Express middleware
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static("public"));
 
-// Handlebars
-const exphbs = require("express-handlebars");
+// Set up Handlebars
 app.engine("handlebars", exphbs({ defaultLayout: "main" }));
 app.set("view engine", "handlebars");
 
-// Use express.static to serve the public folder as a static directory
-app.use(express.static("public"));
-// Controllers
-const router = require("./controllers/api.js");
-app.use(router);
-// Connect to the Mongo DB
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost/mongoHeadlines";
+// Variable to determine which DB to connect to
+// If deployed, use deployed DB. Otherwise, use the local DB.
+var MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost/mongoHeadlines";
 
-// Set mongoose to leverage built in JavaScript ES6 Promises
-// Connect to the Mongo DB
-mongoose.Promise = Promise;
-mongoose.connect(MONGODB_URI);
+// Connect to the DB
+mongoose.connect(MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.set('useCreateIndex', true);
 
-// Start the server
-app.listen(PORT, function () {
-    console.log(`This application is running on port: ${PORT}`);
+// ROUTES
+
+// GET route for home page
+app.get("/", function(req, res) {
+    db.Article.find({}).then(function(dbArticles) {
+        var allArticles = {
+            articles: dbArticles
+        }
+        res.render("index", allArticles);
+    })
+    .catch(function(err) {
+        res.json(err);
+    }); 
+});
+
+// GET route that will delete all articles in db
+app.get("/api/clear", function(req, res) {
+    db.Article.deleteMany({}).then(function(deletedCount) {
+        console.log(deletedCount);
+        res.redirect("/")
+    })
+    .catch(function(err) {
+        console.log(err);
+    }); 
+});
+
+// GET route to display all saved articles
+app.get("/saved", function(req, res) {
+    db.Article.find({ saved: true }).then(function(dbArticles) {
+        var savedArticles = {
+            articles: dbArticles
+        }
+        res.render("saved", savedArticles);
+    })
+    .catch(function(err) {
+        res.json(err);
+    }); 
+});
+
+// GET route to scrape NYT and add articles to db
+app.get("/api/scrape", function(req, res) {
+    axios.get("https://www.nytimes.com").then(function(response) {
+        
+        var $ = cheerio.load(response.data);
+
+        $("article").each(function(i, element) {
+            var result = {};
+
+            result.title = $(this).find("span.lx-stream-post__header-text").text();
+            result.summary = $(this).find("p.qa-sty-summary").text();
+            result.url = $(this).find("a.qa-heading-link").attr("href");
+            
+            if(result.summary !== "") {
+                db.Article.create(result).then(function(dbArticle) {
+                    console.log(dbArticle);
+                })
+                .catch(function(err) {
+                    console.log(err);
+                });
+            }
+        });
+       
+        res.end();
+    });
+});
+
+// PUT route to save an article
+app.put("/api/articles/:id", function(req, res) {
+    db.Article.findOneAndUpdate({ _id: req.params.id }, { $set: { saved: req.body.saved }})
+    .then(function(dbArticle) {
+        console.log(dbArticle);
+        res.end();
+    })
+    .catch(function(err) {
+        console.log(err);
+    });
+});
+
+// DELETE route to delete a saved article
+app.delete("/api/articles/:id", function(req, res) {
+    db.Article.findOneAndDelete({ _id: req.params.id }).then(function(dbArticle) {
+        console.log(dbArticle);
+        res.end();
+    })
+    .catch(function(err) {
+        console.log(err);
+    });
+});
+
+// GET route to find specified article and populate it with its comments
+app.get("/api/articles/:id", function(req, res) {
+    db.Article.findOne({ _id: req.params.id })
+        .populate("comments")
+        .then(function(dbArticle) {
+            res.json(dbArticle)
+    })
+    .catch(function(err) {
+        console.log(err);
+    });
+});
+
+// POST route to add comment to db and push its _id into Article comments array
+app.post("/api/articles/:id", function(req, res) {
+    db.Comment.create(req.body).then(function(dbComment) {
+        return db.Article.findOneAndUpdate({ _id: req.params.id }, { $push: { comments: dbComment._id } }, { new: true });
+    })
+    .then(function(dbArticle) {
+        console.log(dbArticle);
+        res.end();
+    })
+    .catch(function(err) {
+        console.log(err);
+    });
+});
+
+// DELETE route to delete a comment
+app.delete("/api/comments/:id", function(req, res) {
+    db.Comment.findOneAndDelete({ _id: req.params.id }).then(function(dbComment) {
+        console.log(dbComment);
+        res.end();
+    })
+    .catch(function(err) {
+        console.log(err);
+    });
+});
+
+// Start express server
+app.listen(PORT, function() {
+    console.log(`Listening on PORT ${PORT}...`)
 });
