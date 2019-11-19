@@ -1,116 +1,41 @@
-var express = require("express");
-var logger = require("morgan");
-var mongoose = require("mongoose");
-var axios = require("axios");
-var path = require("path");
-var cheerio = require("cheerio");
+// Dependencies
+const express = require("express");
+const bodyParser = require("body-parser"); //JSON responses
+const mongoose = require("mongoose"); //Mongo object modelling 
+const request = require("request"); //Makes http calls
+const cheerio = require("cheerio"); //Scraper
 
-var db = require("./models");
+// Require all models
+const db = require("./models");
 
-var PORT = process.env.PORT || 3000;
+// Port configuration for local/Heroku
+const PORT = process.env.PORT || 3000;
 
-var app = express();
+// Initialize Express
+const app = express();
 
-app.use(logger("dev"));
+// Use body-parser for handling form submissions
+app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Handlebars
+const exphbs = require("express-handlebars");
+app.engine("handlebars", exphbs({ defaultLayout: "main" }));
+app.set("view engine", "handlebars");
 
+// Use express.static to serve the public folder as a static directory
 app.use(express.static("public"));
+// Controllers
+const router = require("./controllers/api.js");
+app.use(router);
+// Connect to the Mongo DB
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost/mongoHeadlines";
 
-mongoose.connect("mongodb://localhost/newsScraper", { useNewUrlParser: true });
-
-var MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost/mongoHeadlines";
-
+// Set mongoose to leverage built in JavaScript ES6 Promises
+// Connect to the Mongo DB
+mongoose.Promise = Promise;
 mongoose.connect(MONGODB_URI);
 
-app.get("/", function (req, res) {
-    res.sendFile(path.join(__dirname, "public/index.html"));
-});
-
-
-app.get("/saved", function (req, res) {
-    res.sendFile(path.join(__dirname, "public/savedArticles.html"));
-});
-
-app.get("/scrape", function (req, res) {
-    axios.get("https://www.nytimes.com/section/technology").then(function (response) {
-        var $ = cheerio.load(response.data);
-
-        $("div.css-4jyr1y").each(function (i, element) {
-            var result = {};
-            result.url = $(element).children("a").attr("href");
-            result.headline = $(element).children("a").children("h2.css-1dq8tca").text();
-            result.summary = $(element).children("a").children("p.css-1echdzn").text();
-
-            if (result.headline && result.url) {
-                db.Article.create(result)
-                    .then(function (dbArticle) {
-                        console.log(dbArticle);
-                    })
-                    .catch(function (err) {
-                        console.log(err);
-                    });
-            }
-        });
-        res.sendFile(path.join(__dirname, "public/index.html"));
-    });
-});
-
-app.get("/articles", function (req, res) {
-    db.Article.find({})
-        .then(function (dbArticle) {
-            res.json(dbArticle);
-        })
-        .catch(function (err) {
-            res.json(err);
-        });
-});
-
-app.get("/articles/:id", function (req, res) {
-    db.Article.findOne({ _id: req.params.id })
-        .populate("note")
-        .then(function (dbArticle) {
-            res.json(dbArticle);
-        })
-        .catch(function (err) {
-            res.json(err);
-        });
-});
-
-app.put("/articles/:id", function (req, res) {
-    db.Article.update({ _id: req.params.id }, { $set: { isSaved: true } })
-        .then(function (dbArticle) {
-            res.json(dbArticle);
-        })
-        .catch(function (err) {
-            res.json(err);
-        });
-});
-
-app.post("/articles/:id", function (req, res) {
-    db.Note.create(req.body)
-        .then(function (dbNote) {
-            return db.Article.findOneAndUpdate({ _id: req.params.id }, { note: dbNote._id }, { new: true });
-        })
-        .then(function (dbArticle) {
-            res.json(dbArticle);
-        })
-        .catch(function (err) {
-            res.json(err);
-        });
-});
-
-app.delete("/articles/:id", function (req, res) {
-    db.Article.remove({ _id: req.params.id })
-        .then(function (dbArticle) {
-            res.json(dbArticle);
-        })
-        .catch(function (err) {
-            res.json(err);
-        });
-});
-
+// Start the server
 app.listen(PORT, function () {
-    console.log("App running on port " + PORT + "!");
+    console.log(`This application is running on port: ${PORT}`);
 });

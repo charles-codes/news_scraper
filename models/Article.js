@@ -1,27 +1,47 @@
 var mongoose = require("mongoose");
+
 var Schema = mongoose.Schema;
 
 var ArticleSchema = new Schema({
-    headline: {
-        type: String,
-        required: true
-    },
-    summary: {
-        type: String
-    },
-    url: {
-        type: String
-    },
-    isSaved: {
-        type: Boolean,
-        default: false
-    },
-    note: {
-        type: Schema.Types.ObjectId,
-        ref: "Note"
-    }
+
+  title: {
+    type: String,
+    required: true,
+    unique: true
+  },
+
+  link: {
+    type: String,
+    required: true,
+    unique: true
+  },
+
+  summary: {
+    type: String,
+    required: false,
+    unique: false
+  },
+
+  byline: {
+    type: String,
+    required: false,
+    unique: false
+  },
+
+  isSaved: {
+    type: Boolean,
+    default: false,
+    required: false,
+    unique: false
+  },
+  // `note` is an object that stores a Note id
+  // The ref property links the ObjectId to the Note model
+  // This allows us to populate the Article with an associated Note
+  note: {
+    type: [{ type: Schema.Types.ObjectId, ref: 'Note'}],
+  }
 });
 
 var Article = mongoose.model("Article", ArticleSchema);
 
-module.exports = Article;
+module.exports = Article; //exporting Article
