@@ -71,7 +71,7 @@ app.get("/saved", function(req, res) {
 
 // GET route to scrape NYT and add articles to db
 app.get("/api/scrape", function(req, res) {
-    axios.get("https://www.nytimes.com").then(function(response) {
+    axios.get("https://www.nytimes.com/").then(function(response) {
         
         var $ = cheerio.load(response.data);
 
@@ -91,10 +91,10 @@ app.get("/api/scrape", function(req, res) {
                 });
             }
         });
-       
         res.end();
     });
 });
+
 
 // PUT route to save an article
 app.put("/api/articles/:id", function(req, res) {
